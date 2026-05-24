@@ -1,111 +1,104 @@
-// App.js
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Platform } from "react-native";
+import React, { useState } from "react";
+import { View, ScrollView, Alert } from "react-native";
 
-// Functions to fetch user and transactions
-const getLoginUser = () => ({
-  name: "Rahul Sharma",
-  bank: "HDFC Bank • **** 1234",
-  balance: 24500,
-});
+import { styles } from "./src/styles/global";
+import { getLoginUser, initialTransactions } from "./src/data/mockData";
+import { mockBackendLog } from "./src/utils/logger";
 
-const getTopTransactions = () => [
-  { title: "Zomato", amount: 850, time: "10:30 AM", method: "Card" },
-  { title: "Amazon", amount: 2999, time: "09:15 AM", method: "UPI" },
-  { title: "Electricity Bill", amount: 1200, time: "06:45 PM", method: "AutoPay" },
-  { title: "Swiggy", amount: 450, time: "01:30 PM", method: "Card" },
-  { title: "Netflix", amount: 499, time: "11:00 PM", method: "UPI" },
-];
+import Header from "./src/components/Header";
+import Footer from "./src/components/Footer";
+import DisputeModal from "./src/components/DisputeModal";
 
-// Transaction card component
-const TransactionCard = ({ title, amount, time, method }) => (
-  <View style={styles.card}>
-    <View style={styles.details}>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.amount}>₹{amount} ▼</Text>
-      <Text style={styles.meta}>{time} · {method}</Text>
-    </View>
-  </View>
-);
+import HomeScreen from "./src/screens/HomeScreen";
+import HistoryScreen from "./src/screens/HistoryScreen";
+import EvidencesScreen from "./src/screens/EvidencesScreen";
+import LoginScreen from "./src/screens/LoginScreen";
 
 export default function App() {
-  const user = getLoginUser();
-  const transactions = getTopTransactions();
+  const defaultUser = getLoginUser();
+  const [user, setUser] = useState(null);
+
+  const [activeTab, setActiveTab] = useState("Home");
+  const [transactions] = useState(initialTransactions);
+  const [disputes, setDisputes] = useState([]);
+
+  // Dispute Modal State
+  const [isModalVisible, setModalVisible] = useState(false);
+  const [activeTxn, setActiveTxn] = useState(null);
+  const [disputeType, setDisputeType] = useState("DUPLICATE_CHARGE");
+  const [agentNotes, setAgentNotes] = useState("");
+  const [evidenceImage, setEvidenceImage] = useState(null);
+
+  const openDisputeModal = (txn) => {
+    setActiveTxn(txn);
+    setDisputeType("DUPLICATE_CHARGE");
+    setAgentNotes("");
+    setEvidenceImage(null);
+    setModalVisible(true);
+  };
+
+  const submitDispute = () => {
+    if (!activeTxn) return;
+    
+    // Create the expected backend payload
+    const payload = {
+      dispute_id: "D" + Math.floor(1000 + Math.random() * 9000),
+      transaction_id: activeTxn.transaction_id,
+      user_id: activeTxn.user_id,
+      card_id: activeTxn.card_id,
+      merchant_name: activeTxn.merchant_name,
+      amount: activeTxn.amount,
+      currency: activeTxn.currency,
+      dispute_type: disputeType,
+      agent_notes: agentNotes,
+      evidence_url: evidenceImage, // Local URI for frontend display mock
+      decision: "PENDING",
+      refund_amount: null, // to be updated by backend
+      status: "PENDING",
+      agent_id: null,
+      date: new Date().toISOString()
+    };
+
+    // Log using our backend payload logger
+    mockBackendLog(payload);
+    
+    setDisputes([...disputes, payload]);
+    setModalVisible(false);
+    setActiveTab("Evidences");
+    Alert.alert("Success", "Dispute raised successfully.");
+  };
+
+  if (!user) {
+    return <LoginScreen onLogin={(name) => setUser({ ...defaultUser, name })} />;
+  }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.lock}>🔒 Hello, {user.name}</Text>
-        <Text style={styles.bank}>🏦 {user.bank}</Text>
-        <Text style={styles.balance}>Available Balance: ₹{user.balance}</Text>
-      </View>
-
-      {/* Transactions */}
+      <Header user={user} />
+      
+      {/* Main Content Area */}
       <ScrollView style={styles.scroll}>
-        <Text style={styles.section}>📅 Top 5 Transactions</Text>
-        {transactions.map((txn, index) => (
-          <TransactionCard key={index} {...txn} />
-        ))}
+        {activeTab === "Home" && <HomeScreen transactions={transactions} />}
+        {activeTab === "History" && <HistoryScreen transactions={transactions} disputes={disputes} openDisputeModal={openDisputeModal} />}
+        {activeTab === "Evidences" && <EvidencesScreen disputes={disputes} />}
       </ScrollView>
 
-      {/* Footer Buttons */}
-      <View style={styles.footer}>
-        <TouchableOpacity style={styles.footerBtn}><Text style={styles.footerText}>Search</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.footerBtn}><Text style={styles.footerText}>History</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.footerBtn}><Text style={styles.footerText}>Profile</Text></TouchableOpacity>
-      </View>
+      <Footer activeTab={activeTab} setActiveTab={setActiveTab} />
+
+      {/* Dispute Modal */}
+      <DisputeModal 
+        isModalVisible={isModalVisible}
+        setModalVisible={setModalVisible}
+        activeTxn={activeTxn}
+        disputeType={disputeType}
+        setDisputeType={setDisputeType}
+        agentNotes={agentNotes}
+        setAgentNotes={setAgentNotes}
+        evidenceImage={evidenceImage}
+        setEvidenceImage={setEvidenceImage}
+        submitDispute={submitDispute}
+      />
+
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f9f9f9", paddingTop: 40 },
-  
-  header: { 
-    padding: 20, 
-    backgroundColor: "#1976d2", 
-    borderBottomLeftRadius: 20, 
-    borderBottomRightRadius: 20,
-    ...Platform.select({
-      ios: { shadowColor: "#000", shadowOpacity: 0.2, shadowRadius: 5, shadowOffset: { width: 0, height: 3 } },
-      android: { elevation: 4 }
-    })
-  },
-  lock: { fontSize: 18, fontWeight: "600", color: "#fff" },
-  bank: { marginTop: 8, fontSize: 15, color: "#e3f2fd" },
-  balance: { marginTop: 4, fontSize: 16, fontWeight: "bold", color: "#fff" },
-  
-  scroll: { paddingHorizontal: 20 },
-  section: { marginTop: 20, fontSize: 18, fontWeight: "600", color: "#333" },
-  
-  card: { 
-    backgroundColor: "#fff", 
-    padding: 15, 
-    marginTop: 12, 
-    borderRadius: 12, 
-    ...Platform.select({
-      ios: { shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
-      android: { elevation: 3 }
-    })
-  },
-  details: { flex: 1 },
-  title: { fontSize: 16, fontWeight: "500", color: "#222" },
-  amount: { fontSize: 15, color: "#d32f2f", marginTop: 2 },
-  meta: { fontSize: 13, color: "#555", marginTop: 2 },
-  
-  footer: { 
-    flexDirection: "row", 
-    justifyContent: "space-around", 
-    padding: 15, 
-    borderTopWidth: 1, 
-    borderColor: "#ddd", 
-    backgroundColor: "#fafafa" 
-  },
-  footerBtn: { 
-    paddingVertical: 10, 
-    paddingHorizontal: 20, 
-    backgroundColor: "#1976d2", 
-    borderRadius: 8 
-  },
-  footerText: { color: "#fff", fontWeight: "600" }
-});
